@@ -1,13 +1,15 @@
+import { ChildProcess, fork } from 'child_process';
 import * as vscode from 'vscode';
-import { TestAdapter, TestLoadStartedEvent, TestLoadFinishedEvent, TestRunStartedEvent, TestRunFinishedEvent, TestSuiteEvent, TestEvent } from 'vscode-test-adapter-api';
+import { TestAdapter, TestLoadStartedEvent, TestLoadFinishedEvent, TestRunStartedEvent, TestRunFinishedEvent, TestSuiteEvent, TestEvent, TestSuiteInfo } from 'vscode-test-adapter-api';
 import { Log } from 'vscode-test-adapter-util';
-import { loadFakeTests, runFakeTests } from './fakeTests';
+import { runFakeTests } from './fakeTests';
+import stream = require('stream');
+
 
 /**
- * This class is intended as a starting point for implementing a "real" TestAdapter.
- * The file `README.md` contains further instructions.
+ * A test adapater for Cucumber.js authored features.
  */
-export class ExampleAdapter implements TestAdapter {
+export class CucumberAdapter implements TestAdapter {
 
 	private disposables: { dispose(): void }[] = [];
 
@@ -21,10 +23,10 @@ export class ExampleAdapter implements TestAdapter {
 
 	constructor(
 		public readonly workspace: vscode.WorkspaceFolder,
-		private readonly log: Log
-	) {
+		public readonly channel: vscode.OutputChannel,
+		private readonly log: Log) {
 
-		this.log.info('Initializing example adapter');
+		this.log.info('Initializing Cucumber.js adapter');
 
 		this.disposables.push(this.testsEmitter);
 		this.disposables.push(this.testStatesEmitter);
@@ -34,19 +36,81 @@ export class ExampleAdapter implements TestAdapter {
 
 	async load(): Promise<void> {
 
-		this.log.info('Loading example tests');
+		this.log.info('Loading Cucumber.js tests');
 
 		this.testsEmitter.fire(<TestLoadStartedEvent>{ type: 'started' });
 
-		const loadedTests = await loadFakeTests();
+		const rootSuite: TestSuiteInfo = {
+			type: 'suite',
+			id: 'root',
+			label: 'Cucumber.js',
+			children: []
+		}
 
-		this.testsEmitter.fire(<TestLoadFinishedEvent>{ type: 'finished', suite: loadedTests });
+		try {
 
+			var features = await this.discoverFeatures();
+
+			// TODO: Sort the features and scenarios (alphabetically?)
+			if (features) {
+				Object.assign(rootSuite.children, features);
+			}
+		}
+		finally {
+
+			this.testsEmitter.fire(<TestLoadFinishedEvent>{ 
+				type: 'finished',
+				suite: rootSuite.children.length > 0 ? rootSuite : undefined });
+		}
+	}
+
+	private async discoverFeatures() : Promise<TestSuiteInfo[] | undefined> {
+		return new Promise<TestSuiteInfo[] | undefined>(resolve => {
+
+			const features: TestSuiteInfo[] = [];
+
+			const discovery = require.resolve('./discovery.js');
+			const discoveryArgs = [this.workspace.uri.toString()];
+			const discoveryProcess = fork(
+				discovery,
+				discoveryArgs,
+				{
+					/*cwd: this.workspace.uri.toString(),
+					env: config.env,
+					execPath: config.nodePath,
+					execArgv: config.nodeArgv,*/
+					stdio: ['pipe', 'pipe', 'pipe', 'ipc']
+				});
+
+			this.pipeProcess(discoveryProcess);
+
+			discoveryProcess.on('message', (message: string | TestSuiteInfo) => {
+
+				if (typeof(message) === 'string') {
+					this.log.info(`Worker: ${message}`);
+				}
+				else {
+
+					var feature = message;
+
+					if (this.log.enabled) {
+						this.log.info(`Received scenarios for feature ${feature.file} from worker`);
+					}
+
+					features.push(feature);
+				}
+			});
+
+			discoveryProcess.on('exit', (code) => {
+				this.log.info(`Worker process exited with code ${code}`);
+				resolve(features);
+			});
+		});
 	}
 
 	async run(tests: string[]): Promise<void> {
 
-		this.log.info(`Running example tests ${JSON.stringify(tests)}`);
+		this.log.info(`Running Cucumber.js tests ${JSON.stringify(tests)}`);
 
 		this.testStatesEmitter.fire(<TestRunStartedEvent>{ type: 'started', tests });
 
@@ -74,5 +138,22 @@ export class ExampleAdapter implements TestAdapter {
 			disposable.dispose();
 		}
 		this.disposables = [];
+	}
+
+	/**
+	 * Pipes the output of a process to the output of the current process.
+	 * @param process The process to pipe through the current.
+	 */
+	private pipeProcess(process: ChildProcess) {
+
+		const customStream = new stream.Writable();
+
+		customStream._write = (data, encoding, callback) => {
+			this.channel.append(data.toString());
+			callback();
+		};
+
+		process.stderr!.pipe(customStream);
+		process.stdout!.pipe(customStream);
 	}
 }

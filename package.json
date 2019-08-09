@@ -32,11 +32,17 @@
     "publish": "vsce publish"
   },
   "dependencies": {
+    "cucumber": "^5.1.0",
+    "gherkin": "5.0.0",
+    "mz": "^2.7.0",
     "tslib": "^1.9.3",
     "vscode-test-adapter-api": "^1.7.0",
     "vscode-test-adapter-util": "^0.7.0"
   },
   "devDependencies": {
+    "@types/cucumber": "^4.0.7",
+    "@types/mz": "0.0.32",
+    "@types/node": "^12.7.1",
     "@types/vscode": "~1.23.0",
     "typescript": "^3.5.3",
     "vsce": "^1.65.0"
