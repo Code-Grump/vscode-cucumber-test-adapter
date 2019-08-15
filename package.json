@@ -3,8 +3,8 @@
   "displayName": "Example Test Explorer",
   "description": "Run your Example tests in the Sidebar of Visual Studio Code",
   "icon": "img/icon.png",
-  "author": "Holger Benl <hbenl@evandor.de>",
-  "publisher": "hbenl",
+  "author": "Paul Turner <programming.hero@gmail.com>",
+  "publisher": "codegrump",
   "version": "0.0.1",
   "license": "MIT",
   "homepage": "https://github.com/hbenl/vscode-example-test-adapter",
@@ -34,13 +34,16 @@
   "dependencies": {
     "cucumber": "^5.1.0",
     "gherkin": "5.0.0",
+    "glob": "^7.1.4",
     "mz": "^2.7.0",
     "tslib": "^1.9.3",
     "vscode-test-adapter-api": "^1.7.0",
-    "vscode-test-adapter-util": "^0.7.0"
+    "vscode-test-adapter-util": "^0.7.0",
+    "vscode-uri": "^2.0.3"
   },
   "devDependencies": {
     "@types/cucumber": "^4.0.7",
+    "@types/glob": "^7.1.1",
     "@types/mz": "0.0.32",
     "@types/node": "^12.7.1",
     "@types/vscode": "~1.37.0",

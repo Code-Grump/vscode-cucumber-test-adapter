@@ -8,7 +8,7 @@ import stream = require('stream');
 import ConfigurationBuilder from 'cucumber/lib/cli/configuration_builder';
 
 /**
- * A test adapater for Cucumber.js authored features.
+ * A test adapter for Cucumber.js authored features.
  */
 export class CucumberAdapter implements TestAdapter {
 
@@ -153,7 +153,7 @@ export class CucumberAdapter implements TestAdapter {
 
 			const discovery = require.resolve('./discovery.js');
 			const discoveryArgs = [
-				config.profileName,
+				config.featureDefaultLanguage,
 				JSON.stringify(this.log.enabled)
 			].concat(config.featurePaths);
 			

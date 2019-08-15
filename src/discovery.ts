@@ -1,68 +1,57 @@
 import { generateEvents } from 'gherkin';
 import { readFile } from 'mz/fs';
-import * as path from 'path';
 import { TestSuiteInfo } from 'vscode-test-adapter-api';
+import path from 'path';
+
+const sendMessage = process.send ? (message: any) => process.send!(message) : () => {};
+
+const featureDefaultLanguage = process.argv[2];
+const logEnabled = process.argv[3] == 'true';
+const featurePaths = process.argv.slice(3);
 
 /**
  * Performs the discovery of Cucumber feature files.
  */
-
-const sendMessage = process.send ? (message: any) => process.send!(message) : () => {};
-
-const workspace = process.argv[2];
-const logEnabled = process.argv[3] == 'true';
-
-new Promise(async resolve => {
-
-    const featurePaths = [ 'scripts/test/features/**/*.feature' ];
-    const featureDefaultLanguage = 'en-GB';
+(async () => {
     
     let searchPromises: Promise<void>[] = [];
 
-    featurePaths.forEach(featurePath => searchPromises.push(findFeatures(featurePath, featureDefaultLanguage)));
+    featurePaths.forEach(featurePath => searchPromises.push(readScenarios(featurePath, featureDefaultLanguage)));
 
     await Promise.all(searchPromises);
 
-    resolve();
-})
-.catch(err => {
+})().catch(err => {
     if (logEnabled) {
         sendMessage(`Error during feature discovery: ${err}`);
     }
-    else {    
-        throw err;
-    }
+
+    process.exitCode = -1;
 });
 
-function findFeatures(featurePath: string, language: string): Promise<void> {
+async function readScenarios(featurePath: string, language: string): Promise<void> {
 
-    const uri = path.relative(workspace, featurePath);
+    const uri = path.relative(process.cwd(), featurePath);
 
-    return new Promise(async resolve => {
+    const source = await readFile(featurePath, 'utf8');
 
-        const source = await readFile(uri, 'utf8');
+    const events = generateEvents(source, uri, {}, language);
 
-        const events = generateEvents(source, uri, {}, language);
+    events.forEach(event => {
 
-        events.forEach(event => {
+        if (event.type === 'pickle') {
 
-            if (event.type === 'pickle') {
+            const test : TestSuiteInfo = {
+                id: event.pickle.title,
+                type: 'suite',
+                label: event.pickle.title,
+                children: []
+            };
 
-                const test : TestSuiteInfo = {
-                    id: event.pickle.title,
-                    type: 'suite',
-                    label: event.pickle.title,
-                    children: []
-                };
+            sendMessage(test);
+        }
+        else if (event.type === 'attachment'){
+            throw new Error(`Parse error in '${uri}': ${event.data}`);
+        }
 
-                sendMessage(test);
-            }
-            else if (event.type === 'attachment'){
-                throw new Error(`Parse error in '${uri}': ${event.data}`);
-            }
-
-        });
-
-        resolve();
     });
 }
