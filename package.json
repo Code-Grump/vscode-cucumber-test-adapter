@@ -43,12 +43,12 @@
     "@types/cucumber": "^4.0.7",
     "@types/mz": "0.0.32",
     "@types/node": "^12.7.1",
-    "@types/vscode": "~1.23.0",
+    "@types/vscode": "~1.37.0",
     "typescript": "^3.5.3",
     "vsce": "^1.65.0"
   },
   "engines": {
-    "vscode": "^1.23.0"
+    "vscode": "^1.37.0"
   },
   "extensionDependencies": [
     "hbenl.vscode-test-explorer"

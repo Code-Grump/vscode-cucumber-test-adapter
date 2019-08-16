@@ -10,8 +10,7 @@ import { TestSuiteInfo } from 'vscode-test-adapter-api';
 const sendMessage = process.send ? (message: any) => process.send!(message) : () => {};
 
 const workspace = process.argv[2];
-
-let logEnabled = false;
+const logEnabled = process.argv[3] == 'true';
 
 new Promise(async resolve => {
 
