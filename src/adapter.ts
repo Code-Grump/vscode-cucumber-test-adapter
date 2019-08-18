@@ -166,7 +166,7 @@ export class CucumberAdapter implements TestAdapter {
 				{
 					cwd: config.cwd,
 					env: config.env,
-					execPath: config.nodePath,
+				execPath: config.nodePath,
 					execArgv: config.nodeArgv,
 					stdio: ['pipe', 'pipe', 'pipe', 'ipc']
 				});

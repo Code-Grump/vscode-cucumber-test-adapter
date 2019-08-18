@@ -1,4 +1,4 @@
-import { generateEvents, Scenario } from 'gherkin';
+import { generateEvents, Scenario, ScenarioOutline, Examples } from 'gherkin';
 import { readFile } from 'mz/fs';
 import { TestSuiteInfo, TestInfo } from 'vscode-test-adapter-api';
 import path from 'path';
@@ -60,13 +60,59 @@ async function readScenarios(featurePath: string, language: string): Promise<voi
     });
 }
 
-function mapScenario(parentId: string, file: string, scenario: Scenario) : TestSuiteInfo | TestInfo {
+function mapScenario(parentId: string, file: string, scenario: Scenario | ScenarioOutline) : TestSuiteInfo | TestInfo {
 
-    return {
-        id: parentId + '#' + scenario.name,
-        type: 'test',
+    const id = parentId + '#' + scenario.name;
+
+    var result: any = {
+        id: id,
         label: scenario.name,
         file: file,
         line: scenario.location.line - 1
     };
+
+    if (scenario.type === 'Scenario') {
+        result.type = 'test';
+    }
+    else if (scenario.type === 'ScenarioOutline') {
+        result.type = 'suite';
+        result.children = [];
+
+        scenario.examples
+            .map(examples => mapExamples(id, file, examples))
+            .forEach(tests => tests.forEach(test => result.children.push(test)));
+    }
+
+    return result;
+}
+
+function mapExamples(parentId: string, file: string, examples: Examples) : TestInfo[] {
+    
+    let result: TestInfo[] = [];
+
+    for (let k = 0; k < examples.tableBody.length; k++) {
+        const row = examples.tableBody[k];
+        let args: any = {};
+        for (let i = 0; i < examples.tableHeader.cells.length; i++) {
+
+            const cell = row.cells[i];
+            if (cell === undefined) {
+                break;
+            }
+
+            args[examples.tableHeader.cells[i].value] = cell.value;
+        }
+
+        const label = JSON.stringify(args);
+
+        result.push({
+            id: parentId + label,
+            type: 'test',
+            label,
+            file,
+            line: row.location.line - 1
+        });
+    }
+
+    return result;
 }
