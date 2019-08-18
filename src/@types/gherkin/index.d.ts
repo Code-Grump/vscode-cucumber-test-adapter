@@ -1,11 +1,36 @@
 declare module 'gherkin' {
 
     interface Document {
+        feature: Feature;
+    }
 
+    interface Feature extends DocumentNode {
+        type: 'Feature';
+        tags: string[];
+        name: string;
+        children: Scenario[];
+    }
+
+    interface Scenario extends DocumentNode {
+        type: 'Scenario';
+        tags: string[];
+        name: string;
+        steps: Step[];
+    }
+
+    interface Step extends DocumentNode {
+        type: 'Step';
+        text: string;
+    }
+
+    interface DocumentNode {
+        type: string;
+        location: { line: number, column: number };
+        keyword: string;
     }
 
     interface Pickle {
-        title: string;
+        name: string;
     }
 
     interface MediaType {

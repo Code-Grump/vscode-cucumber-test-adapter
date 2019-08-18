@@ -86,28 +86,26 @@ export class CucumberAdapter implements TestAdapter {
 		catch (err) {
 		}
 
-		if (this.log.enabled && profiles) {
-			this.log.debug(`Using profiles file: ${profileFilePath}`);
-		}
+		let args: string[] | undefined = undefined;
 
-		const cliArgs : string | undefined = profiles[profileName];
-
-		let args: string[];
-
-		if (cliArgs)
-		{
+		if (profiles) {
 			if (this.log.enabled) {
-				this.log.debug(`Using profile: ${profileName}`);
+				this.log.debug(`Using profiles file: ${profileFilePath}`);
 			}
 
-			args = cliArgs.split(' ');
-		}
-		else {
-			
-			args = []; 
+			const cliArgs : string | undefined = profiles[profileName];
+
+			if (cliArgs)
+			{
+				if (this.log.enabled) {
+					this.log.debug(`Using profile: ${profileName}`);
+				}
+
+				args = cliArgs.split(' ');
+			}
 		}
 
-		const config = await ConfigurationBuilder.build({ argv: args, cwd });
+		const config = await ConfigurationBuilder.build({ argv: args || [ 'node', 'cucumber-js' ], cwd });
 
 		const configEnv: { [prop: string]: any } = adapterConfig.get('env') || {};
 		if (this.log.enabled) {
@@ -130,10 +128,15 @@ export class CucumberAdapter implements TestAdapter {
 		if (nodePath === 'default') {
 			nodePath = await detectNodePath();
 		}
-		if (this.log.enabled) this.log.debug(`Using nodePath: ${nodePath}`);
+
+		if (this.log.enabled && nodePath) {
+			this.log.debug(`Using nodePath: ${nodePath}`);
+		}
 
 		let nodeArgv: string[] = adapterConfig.get<string[]>('nodeArgv') || [];
-		if (this.log.enabled) this.log.debug(`Using node arguments: ${nodeArgv}`);
+		if (this.log.enabled) {
+			this.log.debug(`Using node arguments: ${JSON.stringify(nodeArgv)}`);
+		}
 
 		return { 
 			cwd,

@@ -10,7 +10,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	const channel = vscode.window.createOutputChannel('Cucumber.js Tests');
 
 	// create a simple logger that can be configured with the configuration variables
-	// `exampleExplorer.logpanel` and `exampleExplorer.logfile`
+	// `cucumberJsExplorer.logpanel` and `cucumberJsExplorer.logfile`
 	const log = new Log('cucumberJsExplorer', workspaceFolder, 'Cucumber.js Explorer Log');
 	context.subscriptions.push(log);
 
