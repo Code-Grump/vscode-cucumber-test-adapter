@@ -1,1 +1,0 @@
-/// <reference path="gherkin/index.d.ts" />

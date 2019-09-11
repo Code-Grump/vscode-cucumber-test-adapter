@@ -3,6 +3,7 @@
     "target": "es2016",
     "lib": [ "es2016" ],
     "module": "commonjs",
+    "moduleResolution": "node",
     "outDir": "out",
     "importHelpers": true,
     "sourceMap": true,
@@ -11,16 +12,11 @@
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "removeComments": true,
-    "skipLibCheck": true,
-    "typeRoots": [
-      "src/@types",
-      "node_modules/@types"
-    ]
+    "skipLibCheck": true
   },
   "compileOnSave": true,
   "include": [
-    "src/main.ts",
-    "src/discovery.ts"
+    "src/**/*.ts"
   ]
 }
   

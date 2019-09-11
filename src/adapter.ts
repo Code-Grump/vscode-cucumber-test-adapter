@@ -1,11 +1,9 @@
 import { ChildProcess, fork } from 'child_process';
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { TestAdapter, TestLoadStartedEvent, TestLoadFinishedEvent, TestRunStartedEvent, TestRunFinishedEvent, TestSuiteEvent, TestEvent, TestSuiteInfo } from 'vscode-test-adapter-api';
-import { detectNodePath, Log } from 'vscode-test-adapter-util';
-import { runFakeTests } from './fakeTests';
+import { Log } from 'vscode-test-adapter-util';
 import stream = require('stream');
-import ConfigurationBuilder from 'cucumber/lib/cli/configuration_builder';
+import { Configuration, ConfigurationLoader } from './configuration';
 
 /**
  * A test adapter for Cucumber.js authored features.
@@ -13,6 +11,10 @@ import ConfigurationBuilder from 'cucumber/lib/cli/configuration_builder';
 export class CucumberAdapter implements TestAdapter {
 
 	private disposables: { dispose(): void }[] = [];
+
+	private runnerProcess: ChildProcess | undefined;
+
+	private readonly configurationLoader: ConfigurationLoader;
 
 	private readonly testsEmitter = new vscode.EventEmitter<TestLoadStartedEvent | TestLoadFinishedEvent>();
 	private readonly testStatesEmitter = new vscode.EventEmitter<TestRunStartedEvent | TestRunFinishedEvent | TestSuiteEvent | TestEvent>();
@@ -33,16 +35,17 @@ export class CucumberAdapter implements TestAdapter {
 		this.disposables.push(this.testStatesEmitter);
 		this.disposables.push(this.autorunEmitter);
 
+		this.configurationLoader = new ConfigurationLoader(this.workspace, this.log);
 	}
 
 	async load(): Promise<void> {
 
 		this.testsEmitter.fire(<TestLoadStartedEvent>{ type: 'started' });
 
-		var config = await this.getTestConfiguration();
+		var config = await this.configurationLoader.load();
 
 		if (this.log.enabled) {
-			this.log.info(`Loading Cucumber.js tests from ${this.workspace.uri.fsPath}`);
+			this.log.info(`Loading Cucumber.js tests of ${this.workspace.uri.fsPath}`);
 		}
 
 		const rootSuite: TestSuiteInfo = {
@@ -69,105 +72,25 @@ export class CucumberAdapter implements TestAdapter {
 		}
 	}
 
-	private async getTestConfiguration() : Promise<TestConfiguration> {
-
-		const adapterConfig = vscode.workspace.getConfiguration('cucumberJsExplorer', this.workspace.uri);
-
-		const cwd = path.resolve(this.workspace.uri.fsPath, adapterConfig.get<string>('cwd') || '');
-
-		const profileName = adapterConfig.get<string>('profile') || 'default';
-
-		const profileFilePath = path.resolve(cwd, 'cucumber.js');
-
-		let profiles: any;
-		try {
-			profiles = require(profileFilePath);
-		}
-		catch (err) {
-		}
-
-		let args: string[] | undefined = undefined;
-
-		if (profiles) {
-			if (this.log.enabled) {
-				this.log.debug(`Using profiles file: ${profileFilePath}`);
-			}
-
-			const cliArgs : string | undefined = profiles[profileName];
-
-			if (cliArgs)
-			{
-				if (this.log.enabled) {
-					this.log.debug(`Using profile: ${profileName}`);
-				}
-
-				args = cliArgs.split(' ');
-			}
-		}
-
-		const config = await ConfigurationBuilder.build({ argv: args || [ 'node', 'cucumber-js' ], cwd });
-
-		const configEnv: { [prop: string]: any } = adapterConfig.get('env') || {};
-		if (this.log.enabled) {
-			this.log.debug(`Using environment variable config: ${JSON.stringify(configEnv)}`);
-		}
-
-		// Override the current set of environment variables with any configured.
-		const env = { ...process.env };
-		for(const prop in configEnv) {
-			const val = configEnv[prop];
-			if ((val === undefined) || (val === null)) {
-				delete env.prop;
-			} else {
-				env[prop] = String(val);
-			}
-		}
-
-		// Resolve the path to node, if specified.
-		let nodePath: string | undefined = adapterConfig.get<string>('nodePath') || undefined;
-		if (nodePath === 'default') {
-			nodePath = await detectNodePath();
-		}
-
-		if (this.log.enabled && nodePath) {
-			this.log.debug(`Using nodePath: ${nodePath}`);
-		}
-
-		let nodeArgv: string[] = adapterConfig.get<string[]>('nodeArgv') || [];
-		if (this.log.enabled) {
-			this.log.debug(`Using node arguments: ${JSON.stringify(nodeArgv)}`);
-		}
-
-		return { 
-			cwd,
-			profileName,
-			env,
-			featurePaths: config.featurePaths,
-			featureDefaultLanguage: config.featureDefaultLanguage,
-			nodePath,
-			nodeArgv
-		};
-	}
-
-	private async discoverFeatures(config: TestConfiguration) : Promise<TestSuiteInfo[] | undefined> {
+	private async discoverFeatures(configuration: Configuration) : Promise<TestSuiteInfo[] | undefined> {
 		return new Promise<TestSuiteInfo[] | undefined>(resolve => {
 
 			const features: TestSuiteInfo[] = [];
 
 			const discovery = require.resolve('./discovery.js');
 			const discoveryArgs = [
-				config.featureDefaultLanguage,
+				configuration.featureDefaultLanguage,
 				JSON.stringify(this.log.enabled)
-			].concat(config.featurePaths);
+			].concat(configuration.featurePaths);
 			
 			const discoveryProcess = fork(
 				discovery,
 				discoveryArgs,
 				{
-					cwd: config.cwd,
-					env: config.env,
-				execPath: config.nodePath,
-					execArgv: config.nodeArgv,
+					cwd: configuration.cwd,
+					env: configuration.env,
+					execPath: configuration.nodePath,
+					execArgv: configuration.nodeArgv,
 					stdio: ['pipe', 'pipe', 'pipe', 'ipc']
 				});
 
@@ -197,17 +120,52 @@ export class CucumberAdapter implements TestAdapter {
 		});
 	}
 
-	async run(tests: string[]): Promise<void> {
+	async run(tests: string[], execArgv: string[] = []): Promise<void> {
 
-		this.log.info(`Running Cucumber.js tests ${JSON.stringify(tests)}`);
+		this.log.info(`Running Cucumber.js tests ${JSON.stringify(tests)} of ${this.workspace.uri.fsPath}`);
 
 		this.testStatesEmitter.fire(<TestRunStartedEvent>{ type: 'started', tests });
+		
+		var configuration = await this.configurationLoader.load();
 
-		// in a "real" TestAdapter this would start a test run in a child process
-		await runFakeTests(tests, this.testStatesEmitter);
+		try {
+			await this.runTests(tests, configuration, execArgv);
+		}
+		finally {
+			this.testStatesEmitter.fire(<TestRunFinishedEvent>{ type: 'finished' });
+		}
+	}
 
-		this.testStatesEmitter.fire(<TestRunFinishedEvent>{ type: 'finished' });
+	/**
+	 * Runs the specified tests using the specified configuration.
+	 * 
+	 * @param tests The tests to run.
+	 * @param configuration The test configuration to use to run the tests.
+	 * @param execArgv Additional arguments to pass to node.
+	 */
+	private async runTests(tests: string[], configuration: Configuration, execArgv: string[]): Promise<void> {
 
+		const runner = require.resolve('./runner.js');
+		const runArgs = [
+			JSON.stringify(configuration),
+			JSON.stringify(this.log.enabled)
+		].concat(tests);
+		
+		this.runnerProcess = fork(
+			runner,
+			runArgs,
+			{
+				cwd: configuration.cwd,
+				env: configuration.env,
+				execPath: configuration.nodePath,
+				execArgv: configuration.nodeArgv,
+				stdio: ['pipe', 'pipe', 'pipe', 'ipc']
+			});
+
+		this.pipeProcess(this.runnerProcess);
+
+		this.runnerProcess.on('message', (message: string | TestSuiteInfo) => {
+		});
 	}
 
 /*	implement this method if your TestAdapter supports debugging tests
@@ -217,8 +175,9 @@ export class CucumberAdapter implements TestAdapter {
 */
 
 	cancel(): void {
-		// in a "real" TestAdapter this would kill the child process for the current test run (if there is any)
-		throw new Error("Method not implemented.");
+		if (this.runnerProcess){
+			this.runnerProcess.kill();
+		}
 	}
 
 	dispose(): void {
@@ -245,14 +204,4 @@ export class CucumberAdapter implements TestAdapter {
 		process.stderr!.pipe(customStream);
 		process.stdout!.pipe(customStream);
 	}
-}
-
-interface TestConfiguration {
-	cwd: string;
-	profileName: string;
-	featurePaths: string[];
-	featureDefaultLanguage: string;
-	env: { [prop: string]: any };
-	nodePath: string | undefined;
-	nodeArgv: string[];
 }
