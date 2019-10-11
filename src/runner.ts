@@ -1,8 +1,6 @@
 import { EventEmitter } from 'events';
 import { Configuration} from './configuration';
-import { getTestCasesFromFilesystem } from 'cucumber/lib/cli/helpers';
-import PickleFilter from 'cucumber/lib/pickle_filter';
-import Runtime from 'cucumber/lib/runtime';
+import { getTestCasesFromFilesystem, supportCodeLibraryBuilder, PickleFilter, Runtime } from 'cucumber';
 import ParallelRuntimeMaster from 'cucumber/lib/runtime/parallel/master';
 
 const sendMessage = process.send ? (message: any) => process.send!(message) : () => {};
@@ -17,8 +15,11 @@ const logEnabled = process.argv[3] == 'true';
 
     const eventBroadcaster = new EventEmitter();
 
-    // TODO: Restore support for support code libraries.
-    //const supportCodeLibrary = this.getSupportCodeLibrary(configuration);
+    configuration.supportCodeRequiredModules.map(module => require(module))
+    supportCodeLibraryBuilder.reset(configuration.cwd);
+    configuration.supportCodePaths.forEach(codePath => require(codePath))
+
+    const supportCodeLibrary = supportCodeLibraryBuilder.finalize();
 
     const testCases = await getTestCasesFromFilesystem({
         cwd: configuration.cwd,
@@ -31,6 +32,9 @@ const logEnabled = process.argv[3] == 'true';
 
     let success;
     if (configuration.parallel) {
+
+        const parallel = configuration.parallel;
+
         const parallelRuntimeMaster = new ParallelRuntimeMaster({
             eventBroadcaster,
             options: configuration.runtimeOptions,
@@ -38,19 +42,25 @@ const logEnabled = process.argv[3] == 'true';
             supportCodeRequiredModules: configuration.supportCodeRequiredModules,
             testCases,
         });
+
         await new Promise(resolve => {
-            parallelRuntimeMaster.run(configuration.parallel, s => {
-            success = s;
-            resolve();
+            parallelRuntimeMaster.run(
+                parallel, 
+                s => {
+                    success = s;
+                    resolve();
             });
         });
+
     } else {
+
         const runtime = new Runtime({
             eventBroadcaster,
             options: configuration.runtimeOptions,
-            //supportCodeLibrary,
+            supportCodeLibrary,
             testCases,
         });
+
         success = await runtime.start();
     }
 
@@ -61,11 +71,3 @@ const logEnabled = process.argv[3] == 'true';
 
     process.exitCode = -1;
 });
-
-/*	private getSupportCodeLibrary({ supportCodeRequiredModules, supportCodePaths }) {
-		supportCodeRequiredModules.map(module => require(module))
-		supportCodeLibraryBuilder.reset(this.cwd)
-		supportCodePaths.forEach(codePath => require(codePath))
-		return supportCodeLibraryBuilder.finalize()
-	  }
-*/
